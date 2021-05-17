@@ -1,0 +1,25 @@
+/*
+	This program will output the result 
+	of the multiplication table.
+	Errors:
+		1. invalid operator '++'.
+		2. function 'multiply' has a 'int' return value but returned nothing.
+*/
+
+int multiply(int row, int col) {
+	int i;
+	int j;
+	i = 1;
+	while(i <= row) {
+		j = 1;
+		while(j <= col) {
+			output(i*j);
+			j++;
+		}
+		i++;
+	}
+}
+
+void main(void) {
+	multiply(9, 9);
+}

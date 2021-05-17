@@ -1,0 +1,15 @@
+/*
+	This program calculate the sum from 0 to 100
+*/
+
+void main(void) {
+	int i;
+	int sum;
+	i = 1;
+	sum = 0;
+	while(i <= 100) {
+		sum = sum + i;
+		i = i + 1;
+	}
+	output(sum);
+}

@@ -1,0 +1,21 @@
+/*
+	This program reads 2 integers and print the largers one.
+*/
+
+int getMax(int a, int b) {
+	if(a > b) {
+		return a;
+	} else {
+		return b;
+	}
+}
+
+void main(void) {
+	int num1;
+	int num2;
+	int max;
+	num1 = input();
+	num2 = input();
+	max = getMax(num1, num2);
+	output(max);
+}

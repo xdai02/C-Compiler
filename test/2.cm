@@ -1,0 +1,14 @@
+/*
+    This program print all the odd numbers less than n
+*/
+
+void main(void) {
+    int i;
+    int n;
+    n = input();
+    i = 1;
+    while(i <= n) {
+        output(i);
+        i = i + 2;
+    }
+}

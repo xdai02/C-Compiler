@@ -1,0 +1,17 @@
+/*
+	This program swap two int variables
+	Error:
+		1. 'temp' not declared.
+*/
+
+void main(void) {
+	int x;
+	int y;
+	x = input();
+	y = input();
+	temp = x;
+	x = y;
+	y = temp;
+	output(x);
+	output(y);
+}

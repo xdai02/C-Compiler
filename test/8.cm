@@ -1,0 +1,19 @@
+/*
+	This program calculate n!
+	Errors:
+		1. invalid operator '||'.
+		2. undefined data type 'long'.
+		3. missing ';'.
+*/
+
+long factorial(int n) {
+	if(n == 0 || n == 1) {
+		return 1
+	} else {
+		return n * factorial(n-1);=
+	}
+}
+
+void main(void) {
+	output(factorial(5));=
+}

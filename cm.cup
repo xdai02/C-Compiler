@@ -1,0 +1,596 @@
+/*
+  Created by: Fei Song
+  File Name: cm.cup
+  To Build: java java_cup.CM < cm.cup
+*/
+
+/* ----------------------Preliminary Declarations Section--------------------*/
+
+/* Import the class java_cup.runtime.*  */
+import absyn.*;
+import symbol.*;
+import java_cup.runtime.*;
+
+/* Parser code to change the way the parser reports errors (include
+   line and column number of the error). */
+parser code {:
+    public static boolean genAST = false;
+    public static boolean genSYM = false;
+    public static boolean genTM = false;
+    public static String filename = "";
+    public static boolean noErrors = true;
+
+    /* Change the method report_error so it will display the line and
+       column of where the error occurred in the input as well as the
+       reason for the error which is passed into the method in the
+       String 'message'. */
+    public void report_error(String message, Object info) {
+        noErrors = false;
+
+        /* Create a StringBuffer called 'm' with the string 'Error' in it. */
+        StringBuffer m = new StringBuffer("Error");
+
+        /* Check if the information passed to the method is the same
+           type as the type java_cup.runtime.Symbol. */
+        if (info instanceof java_cup.runtime.Symbol) {
+            /* Declare a java_cup.runtime.Symbol object 's' with the
+               information in the object info that is being typecasted
+               as a java_cup.runtime.Symbol object. */
+            java_cup.runtime.Symbol s = ((java_cup.runtime.Symbol) info);
+
+            /* Check if the line number in the input is greater or
+               equal to zero. */
+            if (s.left >= 0) {
+                /* Add to the end of the StringBuffer error message
+                   the line number of the error in the input. */
+                m.append(" in line "+(s.left+1));
+                /* Check if the column number in the input is greater
+                   or equal to zero. */
+                if (s.right >= 0)
+                    /* Add to the end of the StringBuffer error message
+                       the column number of the error in the input. */
+                    m.append(", column "+(s.right+1));
+            }
+        }
+
+        /* Add to the end of the StringBuffer error message created in
+           this method the message that was passed into this method. */
+        m.append(": "+message);
+
+        /* Print the contents of the StringBuffer 'm', which contains
+           an error message, out on a line. */
+        System.err.println(m);
+    }
+
+    /* Change the method report_fatal_error so when it reports a fatal
+       error it will display the line and column number of where the
+       fatal error occurred in the input as well as the reason for the
+       fatal error which is passed into the method in the object
+       'message' and then exit.*/
+    public void report_fatal_error(String message, Object info) {
+        report_error(message, info);
+        System.exit(1);
+    }
+:};
+
+/* ------------Declaration of Terminals and Non Terminals Section----------- */
+
+terminal INT, VOID, IF, ELSE, WHILE, RETURN;
+terminal ADD, SUB, MUL, DIV, ASSN;
+terminal LT, LE, GT, GE, EQ, NE;
+terminal SEMI, COMMA;
+terminal LPAREN, RPAREN, LSQUARE, RSQUARE, LCURLY, RCURLY;
+terminal String ID, NUM;
+
+non terminal DecList program, dec_list;
+non terminal VarDecList param_list, local_decs;
+non terminal ExpList stmt_list, args, arg_list;
+non terminal NameTy type_spec;
+non terminal Var var;
+non terminal Dec dec, fun_dec;
+non terminal VarDec param, var_dec;
+non terminal Exp compound_stmt, stmt, expr_stmt, selection_stmt, iteration_stmt, return_stmt;
+non terminal Exp expr, call;
+
+/* --------------- Precedence Rules --------------- */
+
+precedence right ASSN;
+precedence nonassoc LT, LE, GT, GE, EQ, NE;
+precedence left ADD, SUB, DIV, MUL;
+precedence left ELSE;
+
+/* --------------- Grammar Section --------------- */
+
+start with program;
+
+/*
+    <program> -> <declaration-list>
+*/
+program     ::= dec_list:dl
+                {:
+                    RESULT = dl;
+
+                    if (parser.genAST) {
+                        System.out.println("Creating " + parser.filename + CM.EXT_AST + " ...");
+                        Absyn.showTree(RESULT, 0, parser.filename);
+                        System.out.println("\t[OK] " + parser.filename + CM.EXT_AST + " created.");
+                    }
+
+                    TypeCheck checker = new TypeCheck(RESULT, parser.genSYM, parser.filename);
+                    checker.start();
+                    checker.close();
+
+                    if (parser.genSYM) {
+                        System.out.println("Creating " + parser.filename + CM.EXT_SYM + " ...");
+                        System.out.println("\t[OK] " + parser.filename + CM.EXT_SYM + " created.");
+                    }
+
+                    if (parser.genTM) {
+                        // Check syntax and semantic errors
+                        if (parser.noErrors && Absyn.noErrors && checker.noErrors) {
+                            System.out.println("Creating " + parser.filename + CM.EXT_TM + " ...");
+                            CodeGeneration codeGenerator = new CodeGeneration(parser.filename);
+                            codeGenerator.generate(RESULT);
+                            System.out.println("\t[OK] " + parser.filename + CM.EXT_TM + " created.");
+                        } else {
+                            System.err.println("[Error] syntax or semantic errors detected, failed to generate TM code");
+                        }
+                    }
+                :}
+            ;
+
+/*
+    <declaration-list> -> <declaration-list> <declaration>
+                        | <declaration>
+*/
+dec_list   ::= dec_list:dl dec:d
+                {:
+                    DecList decs = dl;
+                    while(decs.tail != null)
+                        decs = decs.tail;
+                    decs.tail = new DecList(d, null);
+                    RESULT = dl;
+                :}
+              | dec:d
+                {:
+                    RESULT = new DecList(d, null);
+                :}
+              | error:e
+                {:
+                    parser.report_error("[Error] invalid syntax in \'DecList\'", e);
+                    RESULT = new DecList(new ErrorDec(eleft), null);
+                :}
+              ;
+
+/*
+    <declaration> -> <var-declaration> | <fun-declaration>
+*/
+dec        ::= var_dec:vd
+                {:
+                    RESULT = vd;
+                :}
+              | fun_dec:fd
+                {:
+                    RESULT = fd;
+                :}
+              ;
+
+/*
+    <var-declaration> -> <type-specifier> ID ;
+                        | <type-specifier> ID [ NUM ] ;
+*/
+var_dec    ::= type_spec:ts ID:id SEMI
+                {:
+                    RESULT = new SimpleDec(tsleft, ts, id);
+                :}
+              | type_spec:ts ID:id LSQUARE NUM:n RSQUARE SEMI
+                {:
+                    RESULT = new ArrayDec(tsleft, ts, id, new IntExp(nleft, Integer.parseInt(n)));
+                :}
+              | type_spec:ts ID:id LSQUARE error:e RSQUARE:r SEMI
+                {:
+                    parser.report_error("[Error] invalid syntax in \'ArrayDec\'", e);
+                    RESULT = new ErrorVarDec(eleft);
+                :}
+              | type_spec:ts error:e SEMI
+                {:
+                    parser.report_error("[Error] invalid syntax in \'VarDec\'", e);
+                    RESULT = new ErrorVarDec(eleft);
+                :}
+              ;
+
+/*
+    <type-specifier> -> int | void
+*/
+type_spec   ::= INT:i
+                {:
+                    RESULT = new NameTy(ileft, NameTy.INT);
+                :}
+            |   VOID:v
+                {:
+                    RESULT = new NameTy(vleft, NameTy.VOID);
+                :}
+            ;
+
+/*
+    <fun-declaration> -> <type-specifier> ID ( <params> ) <compound-stmt>
+*/
+fun_dec    ::= type_spec:ts ID:id LPAREN param_list:pl RPAREN compound_stmt:cs
+                {:
+                    RESULT = new FunctionDec(tsleft, ts, id, pl, cs);
+                :}
+              | type_spec:ts ID:id LPAREN VOID RPAREN compound_stmt:cs
+                {:
+                    RESULT = new FunctionDec(tsleft, ts, id, null, cs);
+                :}
+              | error:e ID:id LPAREN param_list:pl RPAREN compound_stmt:cs
+                {:
+                    parser.report_error("[Error] invalid syntax in \'FunctionDec\'", e);
+                    RESULT = new FunctionDec(eleft, new NameTy(eleft, NameTy.VOID), id, pl, cs);
+                :}
+              | error:e ID:id LPAREN VOID RPAREN compound_stmt:cs
+                {:
+                    parser.report_error("[Error] invalid syntax in \'FunctionDec\'", e);
+                    RESULT = new FunctionDec(eleft, new NameTy(eleft, NameTy.VOID), id, null, cs);
+                :}
+              | type_spec:ts ID:id LPAREN VOID RPAREN error:e
+                {:
+                    parser.report_error("[Error] invalid syntax in \'FunctionDec\'", e);
+                    RESULT = new FunctionDec(tsleft, ts, id, null, new CompoundExp(eleft, null, null));
+                :}
+              | type_spec:ts  ID:id LPAREN param_list:pl RPAREN error:e
+                {:
+                    parser.report_error("[Error] invalid syntax in \'FunctionDec\'", e);
+                    RESULT = new FunctionDec(tsleft, ts, id, pl, new CompoundExp(eleft, null, null));
+                :}
+              ;
+
+/*
+    <parms> -> <param-list> | void
+*/
+
+/*
+    <param-list> -> <param-list> , <param> | <param>
+*/
+param_list  ::= param_list:pl COMMA param:p
+                {:
+                    VarDecList decs = pl;
+                    while (decs.tail != null)
+                        decs = decs.tail;
+                    decs.tail = new VarDecList(p, null);
+                    RESULT = pl;
+                :}
+              | param:p
+                {:
+                    RESULT = new VarDecList(p, null);
+                :}
+              | error:e
+                {:
+                    parser.report_error("[Error] invalid syntax in \'VarDecList\'", e);
+                    RESULT = new VarDecList(new ErrorVarDec(eleft), null);
+                :}
+              ;
+
+/*
+    <param> -> <type-specifier> ID | <type-specifier> ID [ ]
+*/
+param       ::= type_spec:ts ID:id
+                {:
+                    RESULT = new SimpleDec(tsleft, ts, id);
+                :}
+              | type_spec:ts ID:id LSQUARE RSQUARE
+                {:
+                    RESULT = new ArrayDec(tsleft, ts, id, null);
+                :}
+              ;
+
+/*
+    <compound-stmt> -> { <local-declaration> <statement-list> }
+*/
+compound_stmt ::= LCURLY:lc local_decs:ld stmt_list:sl RCURLY
+                  {:
+                      RESULT = new CompoundExp(lcleft, ld, sl);
+                  :}
+                  | LCURLY:lc stmt_list:sl RCURLY
+                  {:
+                      RESULT = new CompoundExp(lcleft, null, sl);
+                  :}
+                  | LCURLY:lc local_decs:ld RCURLY
+                  {:
+                      RESULT = new CompoundExp(lcleft, ld, null);
+                  :}
+                  | LCURLY:lc RCURLY
+                  {:
+                      RESULT = new CompoundExp(lcleft, null, null);
+                  :}
+                ;
+
+/*
+    <local-declaration> -> <local-declaration> <var-declaration>
+                        | 
+*/
+local_decs   ::= local_decs:ld var_dec:vd
+                  {:
+                      VarDecList decs = ld;
+                      while (decs.tail != null)
+                          decs = decs.tail;
+                      decs.tail = new VarDecList(vd, null);
+                      RESULT = ld;
+                  :}
+                | var_dec: vd
+                  {:
+                      RESULT = new VarDecList(vd, null);
+                  :}
+                | error:e var_dec:vd
+                  {:
+                      parser.report_error("[Error] invalid syntax in \'VarDecList\'", e);
+                      RESULT = new VarDecList(vd, null);
+                  :}
+                ;
+
+/*
+    <statement-list> -> <statement-list> <statement> | 
+*/
+stmt_list   ::= stmt_list:sl stmt:s
+                {:
+                    ExpList exps = sl;
+                    while (exps.tail != null)
+                        exps = exps.tail;
+                    exps.tail = new ExpList(s, null);
+                    RESULT = sl;
+                :}
+              | stmt:s
+                {:
+                    RESULT = new ExpList(s, null);
+                :}
+              ;
+
+/*
+    <statement> -> <expression-stmt> | <compound-stmt>
+                | <selection-stmt> | <iteration-stmt>
+                | <return-stmt>
+*/
+stmt        ::= expr_stmt:es
+                {:
+                    RESULT = es;
+                :}
+              | compound_stmt:cs
+                {:
+                    RESULT = cs;
+                :}
+              | selection_stmt:ss
+                {:
+                    RESULT = ss;
+                :}
+              | iteration_stmt:is
+                {:
+                    RESULT = is;
+                :}
+              | return_stmt:rs
+                {:
+                    RESULT = rs;
+                :}
+              ;
+
+/*
+    <expression-stmt> -> <expression> ; | ;
+*/
+expr_stmt   ::= expr:e SEMI
+                {:
+                    RESULT = e;
+                :}
+              | SEMI:s
+                {:
+                    RESULT = new NilExp(sleft);
+                :}
+              | error:e
+                {:
+                    parser.report_error("[Error] invalid expression in \'Exp\'", e);
+                    RESULT = new ErrorExp(eleft);
+                :}
+              ;
+
+/*
+    <selection-stmt> -> if ( <expression> ) <statement>
+                    | if ( <expression> ) <statement> else <statement>
+*/
+selection_stmt  ::= IF:i LPAREN expr:e RPAREN stmt:s
+                    {:
+                        RESULT = new IfExp(ileft, e, s, new NilExp(sleft));
+                    :}
+                  | IF:i LPAREN expr:e RPAREN stmt:s1 ELSE stmt:s2
+                    {:
+                        RESULT = new IfExp(ileft, e, s1, s2);
+                    :}
+                  | IF:i LPAREN error:e RPAREN stmt:s
+                    {:
+                        parser.report_error("[Error] invalid expression in \'IfExp\'", e);
+                        RESULT = new IfExp(ileft, new ErrorExp(eleft), s, new NilExp(sleft));
+                    :}
+                  | IF:i LPAREN error:e RPAREN stmt:s1 ELSE stmt:s2
+                    {:
+                        parser.report_error("[Error] invalid expression in \'IfExp\'", e);
+                        RESULT = new IfExp(ileft, new ErrorExp(eleft), s1, s2);
+                    :}
+                  ;
+
+/*
+    <iteration-stmt> -> while ( <expression> ) <statement>
+*/
+iteration_stmt  ::= WHILE:w LPAREN expr:e RPAREN stmt:s
+                    {:
+                        RESULT = new WhileExp(wleft, e, s);
+                    :}
+                  | WHILE:w LPAREN error:e RPAREN stmt:s
+                    {:
+                        parser.report_error("[Error] invalid expression in \'WhileExp\'", e);
+                        RESULT = new WhileExp(wleft, new ErrorExp(eleft), s);
+                    :}
+                  ;
+
+/*
+    <return-stmt> -> return <expression> ; | return ;
+*/
+return_stmt     ::= RETURN:r SEMI
+                    {:
+                        RESULT = new ReturnExp(rleft, null);
+                    :}
+                  | RETURN:r expr:e SEMI
+                    {:
+                        RESULT = new ReturnExp(rleft, e);
+                    :}
+                  ;
+
+/*
+    <expression> -> <var> = <expression> | <simple-expression>
+*/
+expr            ::= var:v ASSN expr:e
+                      {:
+                          RESULT = new AssignExp(vleft, v, e);
+                      :}
+                    | expr:e1 ADD expr:e2
+                      {:
+                          RESULT = new OpExp(e1left, e1, OpExp.ADD, e2);
+                      :}
+                    | expr:e1 SUB expr:e2
+                      {:
+                          RESULT = new OpExp(e1left, e1, OpExp.SUB, e2);
+                      :}
+                    | expr:e1 MUL expr:e2
+                      {:
+                          RESULT = new OpExp(e1left, e1, OpExp.MUL, e2);
+                      :}
+                    | expr:e1 DIV expr:e2
+                      {:
+                          RESULT = new OpExp(e1left, e1, OpExp.DIV, e2);
+                      :}
+                    | expr:e1 EQ expr:e2
+                      {:
+                          RESULT = new OpExp(e1left, e1, OpExp.EQ, e2);
+                      :}
+                    | expr:e1 LT expr:e2
+                      {:
+                          RESULT = new OpExp(e1left, e1, OpExp.LT, e2);
+                      :}
+                    | expr:e1 GT expr:e2
+                      {:
+                          RESULT = new OpExp(e1left, e1, OpExp.GT, e2);
+                      :}
+                    | expr:e1 GE expr:e2
+                      {:
+                          RESULT = new OpExp(e1left, e1, OpExp.GE, e2);
+                      :}
+                    | expr:e1 LE expr:e2
+                      {:
+                          RESULT = new OpExp(e1left, e1, OpExp.LE, e2);
+                      :}
+                    | expr:e1 NE expr:e2
+                      {:
+                          RESULT = new OpExp(e1left, e1, OpExp.NE, e2);
+                      :}
+                    | LPAREN expr:e RPAREN
+                      {:
+                          RESULT = e;
+                      :}
+                    | var:v
+                      {:
+                          RESULT = new VarExp(vleft,v);
+                      :}
+                    | call:c
+                      {:
+                          RESULT = c;
+                      :}
+                    | NUM:n
+                      {:
+                          RESULT = new IntExp(nleft, Integer.parseInt(n));
+                      :}
+                ;
+
+/*
+    <var> -> ID | ID [ <expression> ]
+*/
+var             ::= ID:id
+                    {:
+                        RESULT = new SimpleVar(idleft, id);
+                    :}
+                  | ID:id LSQUARE expr:e RSQUARE
+                    {:
+                        RESULT = new IndexVar(idleft, id, e);
+                    :}
+                  | ID:id LSQUARE error:e RSQUARE
+                    {:
+                        parser.report_error("[Error] invalid expression in \'IndexVar\'", e);
+                        RESULT = new IndexVar(idleft, id, new ErrorExp(eleft)); :}
+                  ;
+
+/*
+    <simple-expression> -> <additive-expression> <relop> <additive-expression>
+                        | <additive-expression>
+*/
+
+/*
+    <relop> -> <= | < | > | >= | == | !=
+*/
+
+/*
+    <additive-expression> -> <additive-expression> <addop> <term> | <term>
+*/
+
+/*
+    <addop> -> + | -
+*/
+
+/*
+    <term> -> <term> <mulop> <factor> | <factor>
+*/
+
+/*
+    <mulop> -> * | /
+*/
+
+/*
+    <factor> -> ( <expression> ) | <var> | <call> | NUM
+*/
+
+/*
+    <call> -> ID ( <args> )
+*/
+call            ::= ID:id LPAREN args:a RPAREN
+                    {:
+                        RESULT = new CallExp(idleft, id, a);
+                    :}
+                  ;
+
+/*
+    <args> -> <arg-list>
+*/                  
+args            ::= arg_list:al
+                    {:
+                        RESULT = al;
+                    :}
+                  |
+                    {:
+                        RESULT = null;
+                    :}
+                  ;
+
+/*
+    <arg-list> -> <arg-list> , <expression> | <expression>
+*/
+arg_list         ::=  arg_list:al COMMA expr:e
+                    {:
+                        ExpList args = al;
+                        while (args.tail != null)
+                            args = args.tail;
+                        args.tail = new ExpList(e, null);
+                        RESULT = al;
+                    :}
+                  | expr:e
+                    {:
+                        RESULT = new ExpList(e, null);
+                    :}
+                  | error:e
+                    {:
+                        parser.report_error("[Error] invalid syntax in \'ExpList\'", e);
+                        RESULT = new ExpList(new ErrorExp(eleft), null); :}
+                  ;

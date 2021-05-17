@@ -1,0 +1,28 @@
+/*
+	This program will output first n (n >= 2) items of fibonacci sequence.
+	Errors:
+		1. void variable 'i'.
+*/
+
+void main(void) {
+	int n;
+	int num1;
+	int num2;
+	int sum;
+	void i;
+	
+	n = input();
+	i = 3;
+	num1 = 1;
+	num2 = 1;
+	
+	output(num1);
+	output(num2);
+	while(i <= n) {
+		sum = num1 + num2;
+		output(sum);
+		num1 = num2;
+		num2 = sum;
+		i = i + 1;
+	}
+}

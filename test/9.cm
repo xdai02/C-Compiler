@@ -1,0 +1,24 @@
+/*
+	This program will print the n-th fibonacci number.
+	Errors:
+		1. implicit declaration of function 'fibonacci'.
+		2. variable 'n' uninitialized.
+		3. function 'fibonacci' returns 'int' but should be 'void'.
+		4. invalid expression at line 19 (for loop).
+		5. invalid operator '++';
+*/
+
+void main(void) {
+    int n;
+	output(fibonacci(n));
+}
+
+void fibonacci(int n) {
+    int f[n];
+    f[0] = 1;
+	f[1] = 1;
+    for(int i = 2; i < n; i++) {
+        f[i] = f[i-2] + f[i-1];
+    }
+    return f[n-1];
+}
