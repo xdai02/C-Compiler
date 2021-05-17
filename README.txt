@@ -1,4 +1,4 @@
-CIS*4650: Compiler
+Compiler
 The ultimate goal of this project is to implement a simple C- language compiler. The program accepts the source code of C- as input and generates output in a readable format based on different command line options. Three command line options should be implemented for this project:
 	(1) -a: perform syntactic analysis and output an abstract syntax tree (.abs)
 	(2) -s: perform type checking and output symbol tables (.sym)
